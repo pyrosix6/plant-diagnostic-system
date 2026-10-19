@@ -1478,4 +1478,128 @@ else:
         scores = {}
         for label in allowed_labels:
           if label in all_labels:
-            idx = all_
+            idx = all_labels.index(label)
+            scores[label] = raw_preds[idx]
+
+        if scores:
+          best_disease = max(scores, key=scores.get)
+          confidence = scores[best_disease] * 100.0
+          
+          # ตรวจสอบว่าถ้าเป็นสถานะปกติ/สุขภาพดี ให้แสดงคำว่า "ไม่มีโรค" ตามที่คุณต้องการ
+          if "healthy" in best_disease.lower():
+              display_title = "ไม่มีโรค (Healthy)" if lang == "TH" else "No Disease (Healthy)"
+          else:
+              display_title = best_disease.replace("_", " ").upper()
+
+          disease_info = advice_data.get(
+              best_disease.lower(),
+              {
+                  "medicine": {
+                      "TH": "สารป้องกันกำจัดเชื้อราทั่วไป",
+                      "EN": "Broad-spectrum Fungicide",
+                  },
+                  "action": {
+                      "TH": "ตัดแต่งส่วนที่เป็นโรคทิ้ง และพ่นสารเคมีตามอาการ",
+                      "EN": "Prune and treat with appropriate fungicides.",
+                  },
+              },
+          )
+
+          med_text = disease_info["medicine"].get(
+              lang, disease_info["medicine"]["EN"]
+          )
+          action_text = disease_info["action"].get(
+              lang, disease_info["action"]["EN"]
+          )
+
+          card_class = (
+              "card-success"
+              if "healthy" in best_disease.lower()
+              else "card-warning"
+          )
+
+          st.markdown(
+              f"""
+                      <div class="card {card_class}">
+                          <div class="card-title">Diagnostic Result</div>
+                          <div class="card-value" style="font-size: 1.4rem; font-weight: 700;">{display_title}</div>
+                          <div style="color: #a7f3d0; margin-bottom: 12px;">Confidence: {confidence:.2f}% | GPS: {gps_coords}</div>
+                          <div style="margin-top: 8px;"><b>{T[lang]['med_title']}:</b> {med_text}</div>
+                          <div style="margin-top: 6px; color: #cbd5e1;"><b>{T[lang]['action_title']}:</b> {action_text}</div>
+                      </div>
+                  """,
+              unsafe_allow_html=True,
+          )
+
+          st.markdown(
+              f"""
+                      <div class="card" style="border-left: 5px solid #3b82f6;">
+                          <div class="card-title" style="color: #60a5fa;">{T[lang]['safety_title']}</div>
+                          <div style="margin-top: 8px; color: #f8fafc;"><b>{T[lang]['phi_label']}:</b> <span style="color: #f59e0b; font-weight: bold;">{chem_info['phi']}</span></div>
+                          <div style="margin-top: 6px; color: #f8fafc;"><b>{T[lang]['ppe_label']}:</b> {chem_info['ppe']}</div>
+                      </div>
+                  """,
+              unsafe_allow_html=True,
+          )
+
+          st.markdown(f"*{T[lang]['top3_title']}*")
+          sorted_scores = sorted(
+              scores.items(), key=lambda x: x[1], reverse=True
+          )[:3]
+          df_top3 = pd.DataFrame({
+              "Disease": [
+                  item[0].replace("_", " ").title() for item in sorted_scores
+              ],
+              "Confidence (%)": [
+                  round(item[1] * 100, 2) for item in sorted_scores
+              ],
+          }).set_index("Disease")
+
+          st.bar_chart(df_top3)
+
+          st.markdown("---")
+          st.markdown(f"*{T[lang]['export_pdf']}*")
+
+          img_b64 = image_to_base64(image)
+
+          report_html = f"""
+                  <script>
+                  function printReport() {{
+                      var printWindow = window.open('', '', 'height=850,width=850');
+                      printWindow.document.write('<html><head><title>Plant Diagnostic Report</title>');
+                      printWindow.document.write('<style>');
+                      printWindow.document.write('body {{ font-family: Arial, sans-serif; padding: 24px; line-height: 1.6; color: #1e293b; }}');
+                      printWindow.document.write('h2 {{ color: #059669; border-bottom: 2px solid #059669; padding-bottom: 8px; margin-bottom: 20px; }}');
+                      printWindow.document.write('.img-container {{ text-align: center; margin: 15px 0; }}');
+                      printWindow.document.write('.img-container img {{ max-width: 300px; height: auto; border-radius: 8px; border: 1px solid #cbd5e1; }}');
+                      printWindow.document.write('.box {{ background: #f8fafc; padding: 12px; border-left: 4px solid #059669; margin-bottom: 10px; border-radius: 4px; }}');
+                      printWindow.document.write('.safety-box {{ background: #eff6ff; padding: 12px; border-left: 4px solid #3b82f6; margin-bottom: 10px; border-radius: 4px; }}');
+                      printWindow.document.write('</style></head><body>');
+                      printWindow.document.write('<h2>Plant Diagnostic Report</h2>');
+                      printWindow.document.write('<div class="img-container"><img src="data:image/jpeg;base64,{img_b64}" /></div>');
+                      printWindow.document.write('<p><b>Plant Type:</b> {selected_plant} | <b>GPS Location:</b> {gps_coords}</p>');
+                      printWindow.document.write('<p><b>Diagnostic Result:</b> <span style="color:#059669; font-weight:bold;">{display_title}</span> ({confidence:.2f}%)</p>');
+                      printWindow.document.write('<p><b>Field Area:</b> {total_rai:.2f} Rai</p>');
+                      printWindow.document.write('<p><b>Chemical Dosage:</b> {total_chemical:.1f} {chem_info["unit"]} in {total_water:.1f}L Water</p>');
+                      printWindow.document.write('<div class="box"><b>{T[lang]['med_title']}:</b> {med_text}</div>');
+                      printWindow.document.write('<div class="box"><b>{T[lang]['action_title']}:</b> {action_text}</div>');
+                      printWindow.document.write('<div class="safety-box"><b>{T[lang]['phi_label']}:</b> {chem_info["phi"]}<br/><b>{T[lang]['ppe_label']}:</b> {chem_info["ppe']}</div>');
+                      printWindow.document.write('<hr style="margin-top:20px; border:none; border-top:1px solid #e2e8f0;"/><p style="font-size: 12px; color: #64748b;">Generated by Plant Disease Diagnostic System</p>');
+                      printWindow.document.write('</body></html>');
+                      printWindow.document.close();
+                      printWindow.print();
+                  }}
+                  </script>
+                  <button onclick="printReport()" style="padding: 12px 20px; background-color: #059669; color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%; font-size: 15px; font-weight: 600;">
+                      {T[lang]['btn_print']}
+                  </button>
+          st.components.v1.html(report_html, height=60)
+
+          new_entry = {
+              "Time": pd.Timestamp.now().strftime("%H:%M:%S"),
+              "Plant": selected_plant,
+              "Result": display_title,
+              "GPS": gps_coords,
+              "Confidence": f"{confidence:.2f}%",
+          }
+          st.session_state.detection_history.insert(0, new_entry)
