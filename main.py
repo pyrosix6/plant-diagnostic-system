@@ -138,16 +138,18 @@ if "detection_history" not in st.session_state:
 lang = st.session_state.lang
 
 
-# ฟังก์ชันดึงสภาพอากาศจาก Open-Meteo API (แก้ไขให้รองรับพิกัดและการดึงข้อมูลที่เสถียรขึ้น)
+# ฟังก์ชันดึงสภาพอากาศจาก Open-Meteo API (เวอร์ชันสมบูรณ์พร้อมแสดง Error หากมีปัญหา)
 def get_weather_spray_advice(lat, lon):
   try:
-    # แปลงค่าละติจูดและลองจิจูดให้เป็น float เพื่อป้องกันข้อผิดพลาดจาก string
     lat_val = float(str(lat).strip())
     lon_val = float(str(lon).strip())
 
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat_val}&longitude={lon_val}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=precipitation_probability&forecast_days=1&timezone=auto"
 
-    response = requests.get(url, timeout=5)
+    # เพิ่ม Header ป้องกันการถูกบล็อกการเข้าถึงจากบางเซิร์ฟเวอร์
+    headers = {"User-Agent": "PlantDiagnosticSystem/1.0"}
+    response = requests.get(url, headers=headers, timeout=5)
+
     if response.status_code == 200:
       data = response.json()
       current = data.get("current", {})
@@ -185,11 +187,13 @@ def get_weather_spray_advice(lat, lon):
           "rain_prob": round(rain_prob, 1),
           "reasons": reasons,
       }
+    else:
+      return {
+          "status": "ERROR",
+          "message": f"API Error Code: {response.status_code}",
+      }
   except Exception as e:
     return {"status": "ERROR", "message": str(e)}
-
-  return {"status": "ERROR", "message": "Failed to fetch weather data"}
-
 
 T = {
     "TH": {
@@ -1278,6 +1282,12 @@ else:
             st.caption(f"**{T[lang]['caution_label']}**")
             for reason in weather["reasons"]:
               st.caption(f"- {reason}")
+        else:
+          # ถ้าดึงไม่สำเร็จ จะแสดงข้อความแจ้งเตือนให้เห็นชัดเจนแทนที่จะหายไปเฉยๆ
+          st.warning(
+              f"ไม่สามารถโหลดข้อมูลอากาศได้: {weather.get('message', 'Unknown'
+              )}officials"
+          )
       except ValueError:
         st.caption("ระบุพิกัด GPS ในรูปแบบ lat, lon")
 
