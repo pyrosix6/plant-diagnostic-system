@@ -36,9 +36,7 @@ def get_image_base64(image_path):
 
 # ดึงภาพพื้นหลัง (แยกภาพระหว่างหน้า Main และหน้า App)
 bg_main_b64 = get_image_base64(os.path.join("assets", "Anime1.jpg"))
-bg_app_b64 = get_image_base64(
-    os.path.join("assets", "Anime2.jpg")
-)  # หากไม่มี Anime2 ระบบจะใช้ Anime1 แทนอัตโนมัติ
+bg_app_b64 = get_image_base64(os.path.join("assets", "Anime2.jpg"))
 if not bg_app_b64:
   bg_app_b64 = bg_main_b64
 
@@ -78,7 +76,6 @@ st.markdown(
     .card-title {{ font-size: 0.85rem; font-weight: 600; color: #34d399; text-transform: uppercase; margin-bottom: 6px; }}
     .card-value {{ font-size: 1.1rem; font-weight: 500; color: #f0fdf4; }}
 
-    /* เทคนิคซ่อน Streamlit file_uploader ให้ทับกล่องเขียวพอดิบพอดี */
     div[data-testid="stFileUploader"] {{
         position: relative;
         margin-top: -155px;
@@ -138,57 +135,62 @@ if "detection_history" not in st.session_state:
 lang = st.session_state.lang
 
 
-# เพิ่ม @st.cache_data ตรงนี้เพื่อให้ระบบจำผลลัพธ์ไว้ 10 นาที (แก้ปัญหา 429 Too Many Requests)
+# ฟังก์ชันดึงสภาพอากาศจาก Open-Meteo API (ใส่ Caching ป้องกัน Error 429)
 @st.cache_data(ttl=600)
 def get_weather_spray_advice(lat, lon):
-    try:
-        lat_val = float(str(lat).strip())
-        lon_val = float(str(lon).strip())
-        
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat_val}&longitude={lon_val}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=precipitation_probability&forecast_days=1&timezone=auto"
-        
-        headers = {"User-Agent": "PlantDiagnosticSystem/1.0"}
-        response = requests.get(url, headers=headers, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            current = data.get("current", {})
-            hourly = data.get("hourly", {})
+  try:
+    lat_val = float(str(lat).strip())
+    lon_val = float(str(lon).strip())
 
-            temp = current.get("temperature_2m", 0)
-            humidity = current.get("relative_humidity_2m", 0)
-            wind_speed = current.get("wind_speed_10m", 0)
-            
-            precip_list = hourly.get("precipitation_probability", [0])
-            rain_prob = precip_list[0] if precip_list and len(precip_list) > 0 else 0
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat_val}&longitude={lon_val}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=precipitation_probability&forecast_days=1&timezone=auto"
+    headers = {"User-Agent": "PlantDiagnosticSystem/1.0"}
+    response = requests.get(url, headers=headers, timeout=5)
 
-            reasons = []
-            is_suitable = True
+    if response.status_code == 200:
+      data = response.json()
+      current = data.get("current", {})
+      hourly = data.get("hourly", {})
 
-            if wind_speed > 15:
-                is_suitable = False
-                reasons.append(f"ความเร็วลมสูงเกินไป ({wind_speed} km/h) อาจทำให้ยาฟุ้งกระจาย")
-            if rain_prob > 30:
-                is_suitable = False
-                reasons.append(f"โอกาสฝนตกสูง ({rain_prob}%) สารเคมีอาจถูกชะล้าง")
-            if humidity < 40:
-                reasons.append(f"อากาศแห้งเกินไป ({humidity}%) ตัวยาอาจระเหยเร็วเกินไป")
-            elif humidity > 85:
-                reasons.append(f"ความชื้นสูงเกินไป ({humidity}%) ละอองยาอาจไม่เกาะใบ")
+      temp = current.get("temperature_2m", 0)
+      humidity = current.get("relative_humidity_2m", 0)
+      wind_speed = current.get("wind_speed_10m", 0)
 
-            return {
-                "status": "SUCCESS",
-                "is_suitable": is_suitable,
-                "temp": round(temp, 1),
-                "humidity": round(humidity, 1),
-                "wind_speed": round(wind_speed, 1),
-                "rain_prob": round(rain_prob, 1),
-                "reasons": reasons
-            }
-        else:
-            return {"status": "ERROR", "message": f"API Error Code: {response.status_code}"}
-    except Exception as e:
-        return {"status": "ERROR", "message": str(e)}
+      precip_list = hourly.get("precipitation_probability", [0])
+      rain_prob = precip_list[0] if precip_list and len(precip_list) > 0 else 0
+
+      reasons = []
+      is_suitable = True
+
+      if wind_speed > 15:
+        is_suitable = False
+        reasons.append(
+            f"ความเร็วลมสูงเกินไป ({wind_speed} km/h) อาจทำให้ยาฟุ้งกระจาย"
+        )
+      if rain_prob > 30:
+        is_suitable = False
+        reasons.append(f"โอกาสฝนตกสูง ({rain_prob}%) สารเคมีอาจถูกชะล้าง")
+      if humidity < 40:
+        reasons.append(f"อากาศแห้งเกินไป ({humidity}%) ตัวยาอาจระเหยเร็วเกินไป")
+      elif humidity > 85:
+        reasons.append(f"ความชื้นสูงเกินไป ({humidity}%) ละอองยาอาจไม่เกาะใบ")
+
+      return {
+          "status": "SUCCESS",
+          "is_suitable": is_suitable,
+          "temp": round(temp, 1),
+          "humidity": round(humidity, 1),
+          "wind_speed": round(wind_speed, 1),
+          "rain_prob": round(rain_prob, 1),
+          "reasons": reasons,
+      }
+    else:
+      return {
+          "status": "ERROR",
+          "message": f"API Error Code: {response.status_code}",
+      }
+  except Exception as e:
+    return {"status": "ERROR", "message": str(e)}
+
 
 T = {
     "TH": {
@@ -808,12 +810,9 @@ plant_interp = load_plant_model()
 # การจัดการสลับหน้า (Main / App / Chemicals / Guide / Settings)
 # =========================================================
 if st.session_state.current_page == "main":
-  # --- หน้าแรก (Main Menu) ---
   logo_base64 = get_image_base64(os.path.join("assets", "logo.png"))
   icon_app = get_image_base64(os.path.join("assets", "icons", "icon_app.png"))
-  icon_guide = get_image_base64(
-      os.path.join("assets", "icons", "icon_guide.png")
-  )
+  icon_guide = get_image_base64(os.path.join("assets", "icons", "icon_guide.png"))
   icon_chem = get_image_base64(os.path.join("assets", "icons", "icon_chem.png"))
   icon_settings = get_image_base64(
       os.path.join("assets", "icons", "icon_settings.png")
@@ -925,7 +924,6 @@ if st.session_state.current_page == "main":
   )
 
 elif st.session_state.current_page == "chemicals":
-  # --- หน้าแนะนำตัวยาและสารเคมี ---
   st.title("คู่มือแนะนำตัวยาและสารเคมีทางการเกษตร")
   st.caption(
       "ข้อมูลคุณสมบัติการออกฤทธิ์ อัตราส่วนการใช้ คำเตือน และแบรนด์สินค้าแนะนำ"
@@ -1001,7 +999,6 @@ elif st.session_state.current_page == "chemicals":
       )
 
 elif st.session_state.current_page == "guide":
-  # --- หน้าคู่มือการใช้งานระบบ ---
   st.title("คู่มือการใช้งานระบบ (User Guide)")
   st.caption(
       "ขั้นตอนและวิธีการใช้งานระบบตรวจวินิจฉัยโรคพืชและคำนวณสัดส่วนยาตั้งแต่เริ่มต้น"
@@ -1024,9 +1021,9 @@ elif st.session_state.current_page == "guide":
       },
       {
           "step": 2,
-        "title": "แผงควบคุมการทำงาน (Control Panel & Sidebar)",
-        "img": "ad2.png",
-        "desc": """
+          "title": "แผงควบคุมการทำงาน (Control Panel & Sidebar)",
+          "img": "ad2.png",
+          "desc": """
 **รายละเอียดเมนูต่างๆ บนแผงควบคุม:**
 
 1. **ปุ่มกลับสู่หน้าหลัก:** ใช้สำหรับย้อนกลับไปหน้า Main Menu
@@ -1041,56 +1038,24 @@ elif st.session_state.current_page == "guide":
       },
       {
           "step": 3,
-            "title": "การเลือกชนิดพืชที่ต้องการตรวจ (Plant Selection)",
-            "img": "ad3.png",
-            "desc": (
-                "เมนูดรอปดาวน์สำหรับเลือกประเภทพืชเพื่อกำหนดขอบเขตให้ AI"
-                " วิเคราะห์ได้แม่นยำ"
-            ),
-            "details": [
-                (
-                    "• **พืชที่รองรับในปัจจุบัน:** กล้วย (Banana), ข้าวโพด"
-                    " (Corn), องุ่น (Grape), พริก (Pepper), มันฝรั่ง (Potato),"
-                    " ข้าว (Rice), มะเขือเทศ (Tomato)"
-                ),
-                (
-                    "• **ระบบป้องกันข้อผิดพลาด:** หากเลือกชนิดพืชไม่ตรงกับภาพจริง"
-                    " ระบบจะแสดงการ์ดเตือนภัยสีแดง (Plant Mismatch) ทันที"
-                ),
-            ],
-        },
+          "title": "การเลือกชนิดพืชที่ต้องการตรวจ (Plant Selection)",
+          "img": "ad3.png",
+          "desc": (
+              "เมนูดรอปดาวน์สำหรับเลือกประเภทพืชเพื่อกำหนดขอบเขตให้ AI"
+              " วิเคราะห์ได้แม่นยำ"
+          ),
+      },
       {
           "step": 4,
           "title": "การเลือกช่องทางรับภาพและอัปโหลดใบพืช (Input Mode)",
           "img": "ad4.png",
           "desc": "รองรับการนำเข้าภาพ 2 รูปแบบตามความสะดวกในการใช้งานหน้างาน",
-          "details": [
-              "1. **โหมดอัปโหลดรูปภาพ:** เลือกไฟล์ภาพถ่ายที่มีอยู่ในเครื่อง",
-              (
-                  "2. **โหมดถ่ายภาพด้วยกล้องสด:**"
-                  " เปิดกล้องถ่ายภาพใบพืชจริงหน้าแปลงเกษตร"
-              ),
-              (
-                  "3. **การแสดงผล:** สามารถเลือกดูแท็บ Bounding Box, Heatmap,"
-                  " Compare Slider และ Original"
-              ),
-          ],
       },
       {
           "step": 5,
           "title": "การกดปุ่มเริ่มวิเคราะห์โรค (Run Analysis)",
           "img": "ad5.png",
           "desc": "สั่งการประมวลผลวิเคราะห์โรคพืชด้วยโมเดล AI (MobileNetV2)",
-          "details": [
-              (
-                  "• **การทำงาน:** กดปุ่มสีแดง 'เริ่มวิเคราะห์โรคพืช'"
-                  " ในแผงควบคุมด้านซ้าย"
-              ),
-              (
-                  "• **กระบวนการ:** AI จะคำนวณค่า Confidence Score"
-                  " และตรวจสอบความสอดคล้องของพืชทันที"
-              ),
-          ],
       },
       {
           "step": 6,
@@ -1100,35 +1065,12 @@ elif st.session_state.current_page == "guide":
               "แสดงผลการวิเคราะห์โรคอย่างละเอียด"
               " พร้อมกราฟสถิติและความปลอดภัย"
           ),
-          "details": [
-              "1. **Diagnostic Result:** แสดงชื่อโรค ระดับความมั่นใจ (%) และพิกัด",
-              (
-                  "2. **คำแนะนำตัวยา:** สารเคมีที่ควรใช้"
-                  " และขั้นตอนการจัดการรักษา"
-              ),
-              (
-                  "3. **ข้อมูลความปลอดภัย:** ระยะเว้นการเก็บเกี่ยว (PHI)"
-                  " และชุดป้องกัน (PPE)"
-              ),
-              "4. **Top 3 Scores:** กราฟความน่าจะเป็น 3 อันดับแรก",
-              "5. **History & Stats:** บันทึกประวัติและสถิติการตรวจใน sidebar",
-          ],
       },
       {
           "step": 7,
           "title": "การส่งออกรายงานฉบับเต็ม (PDF / Print Export)",
           "img": "ad7.png",
           "desc": "พิมพ์รายงานการวินิจฉัยโรคทางการเกษตรหรือบันทึกเป็นไฟล์ PDF",
-          "details": [
-              (
-                  "• **ปุ่มพิมพ์รายงาน:** คลิกปุ่มสีเขียว 'พิมพ์รายงานฉบับเต็ม /"
-                  " บันทึกเป็น PDF'"
-              ),
-              (
-                  "• **เนื้อหารายงาน:** ประกอบด้วยภาพใบพืช ผลวิเคราะห์"
-                  " สัดส่วนยาที่คำนวณได้ และข้อควรระวัง"
-              ),
-          ],
       },
       {
           "step": 8,
@@ -1172,7 +1114,6 @@ elif st.session_state.current_page == "guide":
       st.info(g["desc"])
 
 elif st.session_state.current_page == "settings":
-  # --- หน้าการตั้งค่าระบบ ---
   st.title("การตั้งค่าระบบ (System Settings)")
 
   with st.sidebar:
@@ -1223,7 +1164,6 @@ elif st.session_state.current_page == "settings":
 else:
   # --- หน้าหลักการตรวจวินิจฉัย (App Page) ---
 
-  # Sidebar แผงควบคุม
   with st.sidebar:
     if st.button(T[lang]["btn_back_home"], use_container_width=True):
       st.session_state.current_page = "main"
@@ -1278,10 +1218,8 @@ else:
             for reason in weather["reasons"]:
               st.caption(f"- {reason}")
         else:
-          # ถ้าดึงไม่สำเร็จ จะแสดงข้อความแจ้งเตือนให้เห็นชัดเจนแทนที่จะหายไปเฉยๆ
           st.warning(
-              f"ไม่สามารถโหลดข้อมูลอากาศได้: {weather.get('message', 'Unknown'
-              )}officials"
+              f"ไม่สามารถโหลดข้อมูลอากาศได้: {weather.get('message', 'Unknown')}"
           )
       except ValueError:
         st.caption("ระบุพิกัด GPS ในรูปแบบ lat, lon")
@@ -1358,7 +1296,6 @@ else:
     st.subheader(T[lang]["history"])
     history_placeholder = st.empty()
 
-  # ส่วนหน้า Main ของระบบตรวจวินิจฉัย (App Page)
   st.title(T[lang]["title"])
 
   col_left, col_right = st.columns([1.1, 0.9])
@@ -1393,7 +1330,6 @@ else:
           else '<div style="font-size: 3rem; margin-bottom: 8px;">📸</div>'
       )
 
-      # แสดงกล่อง UI สวยงาม (รองรับการคลิกและลากวางทับได้เลย)
       st.markdown(
           f"""
             <div class="upload-box-ui">
@@ -1406,7 +1342,6 @@ else:
           unsafe_allow_html=True,
       )
 
-      # ตัว st.file_uploader ของจริงถูกซ้อนทับและโปร่งใสทับกล่องสีเขียวพอดี
       uploaded_file = st.file_uploader(
           T[lang]["upload_img"],
           type=["jpg", "jpeg", "png"],
@@ -1543,136 +1478,4 @@ else:
         scores = {}
         for label in allowed_labels:
           if label in all_labels:
-            idx = all_labels.index(label)
-            scores[label] = raw_preds[idx]
-
-        if scores:
-          best_disease = max(scores, key=scores.get)
-          confidence = scores[best_disease] * 100.0
-          display_title = best_disease.replace("_", " ").upper()
-
-          disease_info = advice_data.get(
-              best_disease.lower(),
-              {
-                  "medicine": {
-                      "TH": "สารป้องกันกำจัดเชื้อราทั่วไป",
-                      "EN": "Broad-spectrum Fungicide",
-                  },
-                  "action": {
-                      "TH": "ตัดแต่งส่วนที่เป็นโรคทิ้ง และพ่นสารเคมีตามอาการ",
-                      "EN": "Prune and treat with appropriate fungicides.",
-                  },
-              },
-          )
-
-          med_text = disease_info["medicine"].get(
-              lang, disease_info["medicine"]["EN"]
-          )
-          action_text = disease_info["action"].get(
-              lang, disease_info["action"]["EN"]
-          )
-
-          card_class = (
-              "card-success"
-              if "healthy" in best_disease.lower()
-              else "card-warning"
-          )
-
-          st.markdown(
-              f"""
-                      <div class="card {card_class}">
-                          <div class="card-title">Diagnostic Result</div>
-                          <div class="card-value" style="font-size: 1.4rem; font-weight: 700;">{display_title}</div>
-                          <div style="color: #a7f3d0; margin-bottom: 12px;">Confidence: {confidence:.2f}% | GPS: {gps_coords}</div>
-                          <div style="margin-top: 8px;"><b>{T[lang]['med_title']}:</b> {med_text}</div>
-                          <div style="margin-top: 6px; color: #cbd5e1;"><b>{T[lang]['action_title']}:</b> {action_text}</div>
-                      </div>
-                  """,
-              unsafe_allow_html=True,
-          )
-
-          st.markdown(
-              f"""
-                      <div class="card" style="border-left: 5px solid #3b82f6;">
-                          <div class="card-title" style="color: #60a5fa;">{T[lang]['safety_title']}</div>
-                          <div style="margin-top: 8px; color: #f8fafc;"><b>{T[lang]['phi_label']}:</b> <span style="color: #f59e0b; font-weight: bold;">{chem_info['phi']}</span></div>
-                          <div style="margin-top: 6px; color: #f8fafc;"><b>{T[lang]['ppe_label']}:</b> {chem_info['ppe']}</div>
-                      </div>
-                  """,
-              unsafe_allow_html=True,
-          )
-
-          st.markdown(f"*{T[lang]['top3_title']}*")
-          sorted_scores = sorted(
-              scores.items(), key=lambda x: x[1], reverse=True
-          )[:3]
-          df_top3 = pd.DataFrame({
-              "Disease": [
-                  item[0].replace("_", " ").title() for item in sorted_scores
-              ],
-              "Confidence (%)": [
-                  round(item[1] * 100, 2) for item in sorted_scores
-              ],
-          }).set_index("Disease")
-
-          st.bar_chart(df_top3)
-
-          st.markdown("---")
-          st.markdown(f"*{T[lang]['export_pdf']}*")
-
-          img_b64 = image_to_base64(image)
-
-          report_html = f"""
-                  <script>
-                  function printReport() {{
-                      var printWindow = window.open('', '', 'height=850,width=850');
-                      printWindow.document.write('<html><head><title>Plant Diagnostic Report</title>');
-                      printWindow.document.write('<style>');
-                      printWindow.document.write('body {{ font-family: Arial, sans-serif; padding: 24px; line-height: 1.6; color: #1e293b; }}');
-                      printWindow.document.write('h2 {{ color: #059669; border-bottom: 2px solid #059669; padding-bottom: 8px; margin-bottom: 20px; }}');
-                      printWindow.document.write('.img-container {{ text-align: center; margin: 15px 0; }}');
-                      printWindow.document.write('.img-container img {{ max-width: 300px; height: auto; border-radius: 8px; border: 1px solid #cbd5e1; }}');
-                      printWindow.document.write('.box {{ background: #f8fafc; padding: 12px; border-left: 4px solid #059669; margin-bottom: 10px; border-radius: 4px; }}');
-                      printWindow.document.write('.safety-box {{ background: #eff6ff; padding: 12px; border-left: 4px solid #3b82f6; margin-bottom: 10px; border-radius: 4px; }}');
-                      printWindow.document.write('</style></head><body>');
-                      printWindow.document.write('<h2>Plant Diagnostic Report</h2>');
-                      printWindow.document.write('<div class="img-container"><img src="data:image/jpeg;base64,{img_b64}" /></div>');
-                      printWindow.document.write('<p><b>Plant Type:</b> {selected_plant} | <b>GPS Location:</b> {gps_coords}</p>');
-                      printWindow.document.write('<p><b>Diagnostic Result:</b> <span style="color:#dc2626; font-weight:bold;">{display_title}</span> ({confidence:.2f}%)</p>');
-                      printWindow.document.write('<p><b>Field Area:</b> {total_rai:.2f} Rai</p>');
-                      printWindow.document.write('<p><b>Chemical Dosage:</b> {total_chemical:.1f} {chem_info["unit"]} in {total_water:.1f}L Water</p>');
-                      printWindow.document.write('<div class="box"><b>{T[lang]['med_title']}:</b> {med_text}</div>');
-                      printWindow.document.write('<div class="box"><b>{T[lang]['action_title']}:</b> {action_text}</div>');
-                      printWindow.document.write('<div class="safety-box"><b>{T[lang]['phi_label']}:</b> {chem_info["phi"]}<br/><b>{T[lang]['ppe_label']}:</b> {chem_info["ppe"]}</div>');
-                      printWindow.document.write('<hr style="margin-top:20px; border:none; border-top:1px solid #e2e8f0;"/><p style="font-size: 12px; color: #64748b;">Generated by Plant Disease Diagnostic System</p>');
-                      printWindow.document.write('</body></html>');
-                      printWindow.document.close();
-                      printWindow.print();
-                  }}
-                  </script>
-                  <button onclick="printReport()" style="padding: 12px 20px; background-color: #059669; color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%; font-size: 15px; font-weight: 600;">
-                      {T[lang]['btn_print']}
-                  </button>
-                  """
-          st.components.v1.html(report_html, height=60)
-
-          new_entry = {
-              "Time": pd.Timestamp.now().strftime("%H:%M:%S"),
-              "Plant": selected_plant,
-              "Result": best_disease.replace("_", " ").title(),
-              "GPS": gps_coords,
-              "Confidence": f"{confidence:.2f}%",
-          }
-          st.session_state.detection_history.insert(0, new_entry)
-
-  if st.session_state.detection_history:
-    df_hist = pd.DataFrame(st.session_state.detection_history)
-    history_placeholder.dataframe(
-        df_hist.head(5), use_container_width=True, hide_index=True
-    )
-
-    with st.sidebar:
-      st.markdown("---")
-      st.subheader(T[lang]["stat_header"])
-      disease_counts = df_hist["Result"].value_counts()
-      st.bar_chart(disease_counts)
+            idx = all_
