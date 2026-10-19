@@ -138,57 +138,57 @@ if "detection_history" not in st.session_state:
 lang = st.session_state.lang
 
 
-# ฟังก์ชันดึงสภาพอากาศจาก Open-Meteo API
+# ฟังก์ชันดึงสภาพอากาศจาก Open-Meteo API (แก้ไขให้รองรับพิกัดและการดึงข้อมูลที่เสถียรขึ้น)
 def get_weather_spray_advice(lat, lon):
-  url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,precipitation,rain,wind_speed_10m&hourly=precipitation_probability&forecast_days=1&timezone=auto"
   try:
+    # แปลงค่าละติจูดและลองจิจูดให้เป็น float เพื่อป้องกันข้อผิดพลาดจาก string
+    lat_val = float(str(lat).strip())
+    lon_val = float(str(lon).strip())
+
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat_val}&longitude={lon_val}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=precipitation_probability&forecast_days=1&timezone=auto"
+
     response = requests.get(url, timeout=5)
-    data = response.json()
-    current = data.get("current", {})
-    hourly = data.get("hourly", {})
+    if response.status_code == 200:
+      data = response.json()
+      current = data.get("current", {})
+      hourly = data.get("hourly", {})
 
-    temp = current.get("temperature_2m", 0)
-    humidity = current.get("relative_humidity_2m", 0)
-    wind_speed = current.get("wind_speed_10m", 0)
-    rain_prob = (
-        hourly.get("precipitation_probability", [0])[0]
-        if hourly.get("precipitation_probability")
-        else 0
-    )
+      temp = current.get("temperature_2m", 0)
+      humidity = current.get("relative_humidity_2m", 0)
+      wind_speed = current.get("wind_speed_10m", 0)
 
-    reasons = []
-    is_suitable = True
+      precip_list = hourly.get("precipitation_probability", [0])
+      rain_prob = precip_list[0] if precip_list and len(precip_list) > 0 else 0
 
-    if wind_speed > 15:
-      is_suitable = False
-      reasons.append(
-          f"ความเร็วลมสูงเกินไป ({wind_speed} km/h) อาจทำให้ยาฟุ้งกระจาย"
-      )
-    if rain_prob > 30:
-      is_suitable = False
-      reasons.append(
-          f"โอกาสฝนตกสูง ({rain_prob}%) สารเคมีอาจถูกชะล้าง"
-      )
-    if humidity < 40:
-      reasons.append(
-          f"อากาศแห้งเกินไป ({humidity}%) ตัวยาอาจระเหยเร็วเกินไป"
-      )
-    elif humidity > 85:
-      reasons.append(
-          f"ความชื้นสูงเกินไป ({humidity}%) ละอองยาอาจไม่เกาะใบ"
-      )
+      reasons = []
+      is_suitable = True
 
-    return {
-        "status": "SUCCESS",
-        "is_suitable": is_suitable,
-        "temp": temp,
-        "humidity": humidity,
-        "wind_speed": wind_speed,
-        "rain_prob": rain_prob,
-        "reasons": reasons,
-    }
+      if wind_speed > 15:
+        is_suitable = False
+        reasons.append(
+            f"ความเร็วลมสูงเกินไป ({wind_speed} km/h) อาจทำให้ยาฟุ้งกระจาย"
+        )
+      if rain_prob > 30:
+        is_suitable = False
+        reasons.append(f"โอกาสฝนตกสูง ({rain_prob}%) สารเคมีอาจถูกชะล้าง")
+      if humidity < 40:
+        reasons.append(f"อากาศแห้งเกินไป ({humidity}%) ตัวยาอาจระเหยเร็วเกินไป")
+      elif humidity > 85:
+        reasons.append(f"ความชื้นสูงเกินไป ({humidity}%) ละอองยาอาจไม่เกาะใบ")
+
+      return {
+          "status": "SUCCESS",
+          "is_suitable": is_suitable,
+          "temp": round(temp, 1),
+          "humidity": round(humidity, 1),
+          "wind_speed": round(wind_speed, 1),
+          "rain_prob": round(rain_prob, 1),
+          "reasons": reasons,
+      }
   except Exception as e:
     return {"status": "ERROR", "message": str(e)}
+
+  return {"status": "ERROR", "message": "Failed to fetch weather data"}
 
 
 T = {
